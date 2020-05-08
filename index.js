@@ -1,30 +1,29 @@
 import fetch from "node-fetch";
 import ApolloClient from "apollo-boost";
-import { writeFile } from "fs";
 import { join as pathJoin } from "path";
-import { promisify } from "util";
 import {
   sanitizeSlug,
   getFrontmatter,
   formatDatetime,
   formatDate,
   sanitizeKeywords,
+  allReplace,
+  download,
+  writeFileAsync,
 } from "./utils";
 import postsQuery from "./queries/posts";
 import slugify from "slugify";
-import { Buffer } from "buffer";
-import { resolve as urlPathJoin } from "url";
+import { resolve as urlPathJoin, URL } from "url";
 
 const strapiServer = "http://localhost:1337";
 const outputImageDir = pathJoin(__dirname, "images");
-const frontmatterImagePath = "../static/assets/img/";
+const newFrontMatterImagePath = "../static/assets/img/";
+const newImagePath = "/assets/img/";
 
 const client = new ApolloClient({
   uri: `${strapiServer}/graphql`,
   fetch,
 });
-
-const writeFileAsync = promisify(writeFile);
 
 async function getPosts() {
   const postsResponse = await client.query({
@@ -34,13 +33,44 @@ async function getPosts() {
   return postsResponse.data.posts;
 }
 
-async function download(url, outputPath) {
-  const response = await fetch(url);
-  const buffer = await response.arrayBuffer();
-  await writeFileAsync(outputPath, Buffer.from(buffer));
+const getFilenameFromUrl = (url) => url.split("/").pop();
+
+function extractImagesFromText(text) {
+  const imageRegex = /(?:!\[(.*?)\]\((.*?)\))/g;
+  const matches = text.matchAll(imageRegex);
+  const urls = [...matches].map(([, , url]) => {
+    const imageFilename = getFilenameFromUrl(url);
+    return {
+      url,
+      path: url && new URL(url).pathname,
+      newPath: pathJoin(newImagePath, imageFilename),
+    };
+  });
+  return urls;
 }
 
-const getFilenameFromUrl = (url) => url.split("/").pop();
+function downloadLocalImagesFrom(text) {
+  const localImages = extractImagesFromText(text).filter(({ url }) =>
+    url.includes("http://localhost")
+  );
+  const fixedPathText = allReplace(text, replaceObject);
+  const replaceObject = localImages.reduce((acc, { newPath, url }) => {
+    acc[url] = newPath;
+    return acc;
+  }, {});
+  const imagesPromises = localImages.map(
+    ({ url: localImageUrl, path: localImagePath }) => {
+      download(
+        urlPathJoin(strapiServer, localImagePath),
+        pathJoin(outputImageDir, getFilenameFromUrl(localImageUrl))
+      );
+    }
+  );
+  return {
+    fixedPathText,
+    imagesPromises,
+  };
+}
 
 async function generateMarkdown(post) {
   const {
@@ -62,16 +92,19 @@ async function generateMarkdown(post) {
     date: formatDatetime(createdAt),
     category,
     description,
-    image: pathJoin(frontmatterImagePath, imageFilename),
+    image: pathJoin(newFrontMatterImagePath, imageFilename),
     keywords: sanitizeKeywords(keywords),
   });
 
+  const { fixedPathText, imagesPromises } = downloadLocalImagesFrom(text);
+
   return Promise.all([
+    ...imagesPromises,
     download(
       urlPathJoin(strapiServer, imageUrl),
       pathJoin(outputImageDir, imageFilename)
     ),
-    writeFileAsync(filepath, `${frontmatter}\n${text}`),
+    writeFileAsync(filepath, `${frontmatter}\n${fixedPathText}`),
   ]);
 }
 
