@@ -9,7 +9,7 @@ export default gql`
       updatedAt
       category
       image {
-        id
+        url
       }
       metaTags {
         description
