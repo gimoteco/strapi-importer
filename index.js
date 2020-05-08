@@ -1,9 +1,17 @@
 import fetch from "node-fetch";
-import ApolloClient, { gql } from "apollo-boost";
+import ApolloClient from "apollo-boost";
 import { writeFile } from "fs";
 import { join as pathJoin } from "path";
 import { promisify } from "util";
-import format from "date-fns/format";
+import {
+  sanitizeSlug,
+  getFrontmatter,
+  formatDatetime,
+  formatDate,
+  sanitizeKeywords,
+} from "./utils";
+import postsQuery from "./queries/posts";
+import slugify from "slugify";
 
 const client = new ApolloClient({
   uri: "http://localhost:1337/graphql",
@@ -14,42 +22,10 @@ const writeFileAsync = promisify(writeFile);
 
 async function getPosts() {
   const postsResponse = await client.query({
-    query: gql`
-      {
-        posts {
-          id
-          title
-          createdAt
-          updatedAt
-          category
-          image {
-            id
-          }
-          metaTags {
-            description
-          }
-          slug
-          text
-        }
-      }
-    `,
+    query: postsQuery,
   });
 
   return postsResponse.data.posts;
-}
-
-function formatDate(date) {
-  return format(new Date(date), "yyyy-MM-dd HH:mm:ss");
-}
-
-function getFrontmatter(props) {
-  return `---\n${Object.entries(props)
-    .map(([key, value]) => `${key}: ${value}`)
-    .join("\n")}\n---`;
-}
-
-function sanitizeSlug(slug) {
-  return slug.replace(/\/$/, "");
 }
 
 async function generateMarkdown(post) {
@@ -59,14 +35,17 @@ async function generateMarkdown(post) {
     slug,
     createdAt,
     category,
-    metaTags: { description },
+    metaTags: { description, keywords },
   } = post;
-  const filepath = pathJoin(__dirname, "posts", `${sanitizeSlug(slug)}.md`);
+  const date = formatDate(createdAt);
+  const newSlug = slugify(`${date} ${sanitizeSlug(slug)}`);
+  const filepath = pathJoin(__dirname, "posts", `${newSlug}.md`);
   const frontmatter = getFrontmatter({
     title,
-    date: formatDate(createdAt),
+    date: formatDatetime(createdAt),
     category,
     description,
+    keywords: sanitizeKeywords(keywords),
   });
 
   await writeFileAsync(filepath, `${frontmatter}\n${text}`);
