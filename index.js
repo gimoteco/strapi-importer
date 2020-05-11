@@ -87,16 +87,18 @@ async function generateMarkdown(post) {
   const filepath = pathJoin(__dirname, "posts", `${newSlug}.md`);
   const imageFilename = getFilenameFromUrl(imageUrl);
 
-  const frontmatter = getFrontmatter({
-    title,
-    date: formatDatetime(createdAt),
-    category,
-    description,
-    image: pathJoin(newFrontMatterImagePath, imageFilename),
-    keywords: sanitizeKeywords(keywords),
-  });
-
   const { fixedPathText, imagesPromises } = downloadLocalImagesFrom(text);
+  const fileContent = getFrontmatter(
+    {
+      title,
+      date: formatDatetime(createdAt),
+      category,
+      description,
+      image: pathJoin(newFrontMatterImagePath, imageFilename),
+      keywords: sanitizeKeywords(keywords),
+    },
+    fixedPathText
+  );
 
   return Promise.all([
     ...imagesPromises,
@@ -104,7 +106,7 @@ async function generateMarkdown(post) {
       urlPathJoin(strapiServer, imageUrl),
       pathJoin(outputImageDir, imageFilename)
     ),
-    writeFileAsync(filepath, `${frontmatter}\n${fixedPathText}`),
+    writeFileAsync(filepath, fileContent),
   ]);
 }
 

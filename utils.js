@@ -3,6 +3,7 @@ import { Buffer } from "buffer";
 import fetch from "node-fetch";
 import { promisify } from "util";
 import { writeFile } from "fs";
+import grayMatter from "gray-matter";
 
 export const writeFileAsync = promisify(writeFile);
 
@@ -14,10 +15,8 @@ export function formatDate(date) {
   return format(new Date(date), "yyyy-MM-dd");
 }
 
-export function getFrontmatter(props) {
-  return `---\n${Object.entries(props)
-    .map(([key, value]) => `${key}: "${value}"\n`)
-    .join("")}---`;
+export function getFrontmatter(props, text) {
+  return grayMatter.stringify(text, props);
 }
 
 export function sanitizeSlug(slug) {
